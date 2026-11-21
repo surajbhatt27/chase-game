@@ -1,0 +1,108 @@
+# =========================
+# OS / Editor files
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# =========================
+# Node.js (if using JS/TS chess)
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+dist/
+build/
+.next/
+coverage/
+.env
+.env.local
+.env.*.local
+
+# =========================
+# Python (if using python-chess)
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.ipynb_checkpoints/
+
+# =========================
+# C / C++ (if using Stockfish / engine code)
+# =========================
+*.o
+*.obj
+*.exe
+*.out
+*.a
+*.lib
+*.dll
+*.dylib
+*.so.*
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+*.make
+
+# =========================
+# Java (if using Java chess)
+# =========================
+*.class
+*.jar
+*.war
+target/
+.gradle/
+build/
+!.mvn/wrapper/maven-wrapper.jar
+
+# =========================
+# Chess engine / AI specific
+# =========================
+# Compiled engines
+stockfish
+stockfish.exe
+*.nnue
+# Move logs, game records
+*.pgn
+*.log
+games/
+logs/
+# Training / data files
+data/
+datasets/
+*.bin
+*.model
+*.h5
+*.pt
+*.onnx
+
+# =========================
+# Misc
+# =========================
+*.tmp
+*.bak
+*.orig
+cache/
+.temp/

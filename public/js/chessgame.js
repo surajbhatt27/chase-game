@@ -1,0 +1,203 @@
+const socket = io();
+
+const boardElement = document.querySelector(".chessboard");
+const statusEl = document.getElementById("status");
+const myRoleEl = document.getElementById("myRole");
+const moveListEl = document.getElementById("moveList");
+const turnTextEl = document.getElementById("turnText");
+const turnDotEl = document.getElementById("turnDot");
+const resetBtn = document.getElementById("resetBtn");
+const flipBtn = document.getElementById("flipBtn");
+const seatLineEl = document.getElementById("seatLine");
+const promotionEl = document.getElementById("promotion");
+const promotionButtons = promotionEl.querySelectorAll("button[data-piece]");
+
+const GLYPHS = {
+    w: { k: "♔", q: "♕", r: "♖", b: "♗", n: "♘", p: "♙" },
+    b: { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" },
+};
+const COLOR_NAMES = { w: "White", b: "Black" };
+
+// state is whatever the server last sent: board, turn, history, status, seats.
+let state = null;
+let playerRole = null;
+let manualFlip = false;
+let statusColorTimer = null;
+let pendingPromotion = null;
+
+const squareName = (row, col) => `${String.fromCharCode(97 + col)}${8 - row}`;
+
+const pieceAt = (square) => {
+    if (!state) return null;
+    const col = square.charCodeAt(0) - 97;
+    const row = 8 - Number(square[1]);
+    return state.board[row] ? state.board[row][col] : null;
+};
+
+const flashStatus = (text, isError = false) => {
+    statusEl.textContent = text;
+    statusEl.style.color = isError ? "#ff6b6b" : "#9ae6b4";
+    clearTimeout(statusColorTimer);
+    statusColorTimer = setTimeout(() => {
+        statusEl.style.color = "";
+        if (state) renderMeta();
+    }, 2000);
+};
+
+const renderBoard = () => {
+    const lastMove = state.history.length ? state.history[state.history.length - 1] : null;
+    boardElement.innerHTML = "";
+
+    state.board.forEach((row, rowIndex) => {
+        row.forEach((piece, colIndex) => {
+            const name = squareName(rowIndex, colIndex);
+            const squareEl = document.createElement("div");
+            squareEl.className = `square ${(rowIndex + colIndex) % 2 === 0 ? "light" : "dark"}`;
+
+            if (lastMove && (lastMove.from === name || lastMove.to === name)) {
+                squareEl.classList.add("last-move");
+            }
+
+            const canMove = piece && playerRole === piece.color && playerRole === state.turn && !state.gameOver;
+
+            if (piece) {
+                const pieceEl = document.createElement("div");
+                pieceEl.className = `piece ${piece.color === "w" ? "white" : "black"}`;
+                pieceEl.textContent = GLYPHS[piece.color][piece.type];
+                pieceEl.draggable = canMove;
+
+                if (canMove) {
+                    pieceEl.addEventListener("dragstart", (event) => {
+                        event.dataTransfer.setData("text/plain", name);
+                        event.dataTransfer.effectAllowed = "move";
+                    });
+                }
+
+                squareEl.appendChild(pieceEl);
+            }
+
+            squareEl.addEventListener("dragover", (event) => {
+                if (playerRole) event.preventDefault();
+            });
+
+            squareEl.addEventListener("drop", (event) => {
+                event.preventDefault();
+                const from = event.dataTransfer.getData("text/plain");
+                if (from) requestMove(from, name);
+            });
+
+            boardElement.appendChild(squareEl);
+        });
+    });
+
+    const shouldFlip = manualFlip || playerRole === "b";
+    boardElement.classList.toggle("flipped", shouldFlip);
+};
+
+const renderMeta = () => {
+    const waitingFor = !state.seats.w ? "White" : !state.seats.b ? "Black" : null;
+    statusEl.textContent = waitingFor ? `Waiting for ${waitingFor} to join — ${state.status}` : state.status;
+
+    const turnName = state.gameOver ? "—" : COLOR_NAMES[state.turn];
+    turnTextEl.textContent = turnName;
+    turnDotEl.style.background = state.gameOver ? "transparent" : state.turn === "w" ? "white" : "black";
+
+    myRoleEl.textContent = playerRole ? COLOR_NAMES[playerRole] : "Spectator";
+    seatLineEl.textContent = `White: ${state.seats.w ? "connected" : "empty"} · Black: ${state.seats.b ? "connected" : "empty"}`;
+    resetBtn.disabled = !playerRole;
+};
+
+const renderHistory = () => {
+    moveListEl.innerHTML = "";
+    for (let i = 0; i < state.history.length; i += 2) {
+        const white = state.history[i] ? state.history[i].san : "";
+        const black = state.history[i + 1] ? state.history[i + 1].san : "";
+        const row = document.createElement("div");
+        row.innerHTML = `<strong>${i / 2 + 1}.</strong>&nbsp; ${white} &nbsp; ${black}`;
+        moveListEl.appendChild(row);
+    }
+    moveListEl.scrollTop = moveListEl.scrollHeight;
+};
+
+const render = () => {
+    if (!state) return;
+    renderBoard();
+    renderMeta();
+    renderHistory();
+};
+
+const requestMove = (from, to) => {
+    if (!playerRole) return flashStatus("Spectators can't move pieces", true);
+    if (state.gameOver) return flashStatus("The game is over — start a new game", true);
+    if (state.turn !== playerRole) return flashStatus("It's not your turn", true);
+
+    const piece = pieceAt(from);
+    if (!piece || piece.color !== playerRole) return;
+
+    const promotes = piece.type === "p" && ((piece.color === "w" && to[1] === "8") || (piece.color === "b" && to[1] === "1"));
+    if (promotes) {
+        pendingPromotion = { from, to };
+        promotionEl.classList.remove("hidden");
+        if (piece.color === "b") promotionEl.classList.add("black-to-move");
+        return;
+    }
+
+    socket.emit("move", { from, to });
+};
+
+const closePromotion = () => {
+    pendingPromotion = null;
+    promotionEl.classList.add("hidden");
+};
+
+promotionButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+        if (!pendingPromotion) return;
+        socket.emit("move", { ...pendingPromotion, promotion: button.dataset.piece });
+        closePromotion();
+    });
+});
+
+promotionEl.addEventListener("click", (event) => {
+    if (event.target === promotionEl) closePromotion();
+});
+
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closePromotion();
+});
+
+resetBtn.addEventListener("click", () => {
+    closePromotion();
+    socket.emit("reset");
+});
+
+flipBtn.addEventListener("click", () => {
+    if (!state) return;
+    const currentlyFlipped = manualFlip || playerRole === "b";
+    manualFlip = !currentlyFlipped;
+    renderBoard();
+});
+
+socket.on("role", (role) => {
+    playerRole = role;
+    render();
+});
+
+socket.on("state", (nextState) => {
+    state = nextState;
+    if (state.gameOver) closePromotion();
+    render();
+});
+
+socket.on("invalidMove", () => flashStatus("Illegal move", true));
+socket.on("errorMessage", (message) => flashStatus(message, true));
+
+socket.on("disconnect", () => {
+    statusEl.textContent = "Connection lost — reconnecting…";
+    statusEl.style.color = "#ff6b6b";
+});
+
+socket.on("connect", () => {
+    statusEl.style.color = "";
+    render();
+});
