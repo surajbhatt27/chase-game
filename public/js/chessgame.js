@@ -36,6 +36,8 @@ let playerRole = null;
 let manualFlip = false;
 let statusColorTimer = null;
 let pendingPromotion = null;
+// Square picked up by tap/click, waiting for its destination square.
+let selectedSquare = null;
 
 const squareName = (row, col) => `${String.fromCharCode(97 + col)}${8 - row}`;
 
@@ -57,6 +59,14 @@ const flashStatus = (text, isError = false) => {
 };
 
 const renderBoard = () => {
+    // A selection only survives while that piece is still this player's to move.
+    if (selectedSquare) {
+        const selected = pieceAt(selectedSquare);
+        if (!selected || selected.color !== playerRole || state.turn !== playerRole || state.gameOver) {
+            selectedSquare = null;
+        }
+    }
+
     const lastMove = state.history.length ? state.history[state.history.length - 1] : null;
     boardElement.innerHTML = "";
 
@@ -69,6 +79,8 @@ const renderBoard = () => {
             if (lastMove && (lastMove.from === name || lastMove.to === name)) {
                 squareEl.classList.add("last-move");
             }
+
+            if (name === selectedSquare) squareEl.classList.add("selected");
 
             const canMove = piece && playerRole === piece.color && playerRole === state.turn && !state.gameOver;
 
@@ -97,6 +109,10 @@ const renderBoard = () => {
                 const from = event.dataTransfer.getData("text/plain");
                 if (from) requestMove(from, name);
             });
+
+            // Tap/click to move. Touch screens never fire the drag events above,
+            // so this is the only way to play on a phone.
+            squareEl.addEventListener("click", () => onSquareClick(name));
 
             boardElement.appendChild(squareEl);
         });
@@ -157,6 +173,41 @@ const requestMove = (from, to) => {
     socket.emit("move", { from, to });
 };
 
+const onSquareClick = (square) => {
+    if (!state) return;
+
+    if (selectedSquare) {
+        if (square === selectedSquare) {
+            selectedSquare = null;
+            renderBoard();
+            return;
+        }
+
+        // Tapping another of your own pieces moves the selection rather than
+        // trying to capture your own piece.
+        const piece = pieceAt(square);
+        if (piece && piece.color === playerRole) {
+            selectedSquare = square;
+            renderBoard();
+            return;
+        }
+
+        const from = selectedSquare;
+        selectedSquare = null;
+        renderBoard();
+        requestMove(from, square);
+        return;
+    }
+
+    const piece = pieceAt(square);
+    if (!piece || !playerRole || piece.color !== playerRole) return;
+    if (state.gameOver) return flashStatus("The game is over — start a new game", true);
+    if (state.turn !== playerRole) return flashStatus("It's not your turn", true);
+
+    selectedSquare = square;
+    renderBoard();
+};
+
 const closePromotion = () => {
     pendingPromotion = null;
     promotionEl.classList.add("hidden");
@@ -179,6 +230,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 resetBtn.addEventListener("click", () => {
+    selectedSquare = null;
     closePromotion();
     socket.emit("reset");
 });
