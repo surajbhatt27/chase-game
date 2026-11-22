@@ -204,6 +204,15 @@ socket.on("state", (nextState) => {
 socket.on("invalidMove", () => flashStatus("Illegal move", true));
 socket.on("errorMessage", (message) => flashStatus(message, true));
 
+// Closing or navigating away from the page closes the socket straight away, so
+// the seat turns "reserved" immediately instead of waiting for the heartbeat.
+window.addEventListener("pagehide", () => socket.disconnect());
+
+// Restored from the back/forward cache: the socket was closed on the way out.
+window.addEventListener("pageshow", (event) => {
+    if (event.persisted) socket.connect();
+});
+
 socket.on("disconnect", () => {
     statusEl.textContent = "Connection lost — reconnecting…";
     statusEl.style.color = "#ff6b6b";

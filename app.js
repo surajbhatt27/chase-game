@@ -11,7 +11,10 @@ const PORT = requestedPort > 0 && requestedPort < 65536 ? requestedPort : 5000
 
 const app = express()
 const server = http.createServer(app)
-const io = new Server(server)
+// A closed tab is normally noticed at once, but a connection that dies without a
+// close frame is only caught by the heartbeat. The defaults (25s ping + 20s
+// timeout) leave a dead seat looking "connected" for up to 45s, so tighten them.
+const io = new Server(server, { pingInterval: 10_000, pingTimeout: 5_000 })
 
 const chess = new Chess()
 
