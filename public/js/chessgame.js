@@ -204,13 +204,16 @@ socket.on("state", (nextState) => {
 socket.on("invalidMove", () => flashStatus("Illegal move", true));
 socket.on("errorMessage", (message) => flashStatus(message, true));
 
-// Closing or navigating away from the page closes the socket straight away, so
-// the seat turns "reserved" immediately instead of waiting for the heartbeat.
+// Leaving the page — closing the tab, navigating away, or entering the
+// back/forward cache — closes the socket straight away, so the seat turns
+// "reserved" immediately instead of waiting for the heartbeat.
 window.addEventListener("pagehide", () => socket.disconnect());
 
-// Restored from the back/forward cache: the socket was closed on the way out.
-window.addEventListener("pageshow", (event) => {
-    if (event.persisted) socket.connect();
+// Whenever the page is shown again (including back/forward-cache restores) the
+// socket may have been closed above; reopen it and the server gives this tab's
+// seat back to its token. connect() is a no-op when already connected.
+window.addEventListener("pageshow", () => {
+    if (!socket.connected) socket.connect();
 });
 
 socket.on("disconnect", () => {

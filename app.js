@@ -11,10 +11,11 @@ const PORT = requestedPort > 0 && requestedPort < 65536 ? requestedPort : 5000
 
 const app = express()
 const server = http.createServer(app)
-// A closed tab is normally noticed at once, but a connection that dies without a
-// close frame is only caught by the heartbeat. The defaults (25s ping + 20s
-// timeout) leave a dead seat looking "connected" for up to 45s, so tighten them.
-const io = new Server(server, { pingInterval: 10_000, pingTimeout: 5_000 })
+// A closed tab is noticed at once (the client closes its socket on pagehide), so
+// the heartbeat only bounds connections that die without a close frame. The
+// defaults (25s ping + 20s timeout) leave those stuck on "connected" for up to
+// 45s; 20s at worst, while a slow link still gets 10s to answer a ping.
+const io = new Server(server, { pingInterval: 10_000, pingTimeout: 10_000 })
 
 const chess = new Chess()
 
