@@ -92,6 +92,9 @@ const renderBoard = () => {
 
                 if (canMove) {
                     pieceEl.addEventListener("dragstart", (event) => {
+                        // A drag supersedes any tap selection, so its highlight
+                        // can't be left behind pointing at the wrong piece.
+                        clearSelection();
                         event.dataTransfer.setData("text/plain", name);
                         event.dataTransfer.effectAllowed = "move";
                     });
@@ -173,34 +176,35 @@ const requestMove = (from, to) => {
     socket.emit("move", { from, to });
 };
 
-const onSquareClick = (square) => {
-    if (!state) return;
+// Drop the tap selection and its highlight without rebuilding the board: a
+// dragstart that re-rendered would pull the dragged piece out from under the
+// browser and cancel the drag.
+const clearSelection = () => {
+    selectedSquare = null;
+    const highlighted = boardElement.querySelector(".square.selected");
+    if (highlighted) highlighted.classList.remove("selected");
+};
 
+const onSquareClick = (square) => {
+    // Squares only exist once a state has been rendered, so there is always a state.
     if (selectedSquare) {
-        if (square === selectedSquare) {
-            selectedSquare = null;
-            renderBoard();
-            return;
-        }
+        if (square === selectedSquare) return clearSelection();
 
         // Tapping another of your own pieces moves the selection rather than
         // trying to capture your own piece.
         const piece = pieceAt(square);
         if (piece && piece.color === playerRole) {
             selectedSquare = square;
-            renderBoard();
-            return;
+            return renderBoard();
         }
 
         const from = selectedSquare;
-        selectedSquare = null;
-        renderBoard();
-        requestMove(from, square);
-        return;
+        clearSelection();
+        return requestMove(from, square);
     }
 
     const piece = pieceAt(square);
-    if (!piece || !playerRole || piece.color !== playerRole) return;
+    if (!piece || piece.color !== playerRole) return;
     if (state.gameOver) return flashStatus("The game is over — start a new game", true);
     if (state.turn !== playerRole) return flashStatus("It's not your turn", true);
 
@@ -230,7 +234,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 resetBtn.addEventListener("click", () => {
-    selectedSquare = null;
+    clearSelection();
     closePromotion();
     socket.emit("reset");
 });
