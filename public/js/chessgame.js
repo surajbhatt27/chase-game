@@ -1,4 +1,16 @@
-const socket = io();
+// A per-tab token that survives refresh (sessionStorage) lets the server give this
+// browser its seat back after a reload. A brand new tab gets its own token.
+const TOKEN_KEY = "chessPlayerToken";
+
+const playerToken = sessionStorage.getItem(TOKEN_KEY) || (() => {
+    const token = typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `t${Date.now()}${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem(TOKEN_KEY, token);
+    return token;
+})();
+
+const socket = io({ auth: { token: playerToken } });
 
 const boardElement = document.querySelector(".chessboard");
 const statusEl = document.getElementById("status");
@@ -95,15 +107,15 @@ const renderBoard = () => {
 };
 
 const renderMeta = () => {
-    const waitingFor = !state.seats.w ? "White" : !state.seats.b ? "Black" : null;
-    statusEl.textContent = waitingFor ? `Waiting for ${waitingFor} to join — ${state.status}` : state.status;
+    const waitingFor = ["w", "b"].find((color) => state.seats[color] === "empty");
+    statusEl.textContent = waitingFor ? `Waiting for ${COLOR_NAMES[waitingFor]} to join — ${state.status}` : state.status;
 
     const turnName = state.gameOver ? "—" : COLOR_NAMES[state.turn];
     turnTextEl.textContent = turnName;
     turnDotEl.style.background = state.gameOver ? "transparent" : state.turn === "w" ? "white" : "black";
 
     myRoleEl.textContent = playerRole ? COLOR_NAMES[playerRole] : "Spectator";
-    seatLineEl.textContent = `White: ${state.seats.w ? "connected" : "empty"} · Black: ${state.seats.b ? "connected" : "empty"}`;
+    seatLineEl.textContent = `White: ${state.seats.w} · Black: ${state.seats.b}`;
     resetBtn.disabled = !playerRole;
 };
 

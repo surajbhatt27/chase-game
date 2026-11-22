@@ -4,6 +4,8 @@ const path = require("path")
 const { Server } = require("socket.io")
 const { Chess } = require("chess.js")
 
+const { randomUUID } = require("crypto")
+
 const requestedPort = Number.parseInt(process.env.PORT ?? "", 10)
 const PORT = requestedPort > 0 && requestedPort < 65536 ? requestedPort : 5000
 
@@ -12,7 +14,12 @@ const server = http.createServer(app)
 const io = new Server(server)
 
 const chess = new Chess()
-const seats = { w: null, b: null }
+
+// Seats are owned by a per-tab token so a refresh reclaims the same seat. When
+// the owning socket drops, the seat is held ("reserved") for a short grace period.
+const seats = { w: null, b: null } // { token, socketId, timer }
+const SEAT_GRACE_MS = 30_000
+const COLORS = ["w", "b"]
 
 app.set("view engine", "ejs")
 app.use(express.static(path.join(__dirname, "public")))
@@ -22,7 +29,24 @@ app.get("/", (req, res) => {
 })
 
 const colorName = (color) => (color === "w" ? "White" : "Black")
-const seatOf = (id) => (seats.w === id ? "w" : seats.b === id ? "b" : null)
+
+// "connected" (someone is sitting there), "reserved" (their socket dropped, seat
+// is held for the reclaim window) or "empty".
+const seatStatus = (color) =>
+    seats[color] ? (seats[color].socketId ? "connected" : "reserved") : "empty"
+
+const seatOf = (socketId) =>
+    COLORS.find((color) => seats[color] && seats[color].socketId === socketId) ?? null
+
+const seatByToken = (token) =>
+    COLORS.find((color) => seats[color] && seats[color].token === token) ?? null
+
+const freeSeat = () => COLORS.find((color) => !seats[color]) ?? null
+
+function claimSeat(color, socketId, token) {
+    clearTimeout(seats[color]?.timer)
+    seats[color] = { token, socketId, timer: null }
+}
 
 function statusText() {
     if (chess.isCheckmate()) {
@@ -46,7 +70,7 @@ function gameState() {
         history: chess.history({ verbose: true }).map(({ san, color, from, to }) => ({ san, color, from, to })),
         status: statusText(),
         gameOver: chess.isGameOver(),
-        seats: { w: Boolean(seats.w), b: Boolean(seats.b) },
+        seats: { w: seatStatus("w"), b: seatStatus("b") },
     }
 }
 
@@ -69,8 +93,13 @@ function parseMove(raw) {
 }
 
 io.on("connection", (socket) => {
-    if (!seats.w) seats.w = socket.id
-    else if (!seats.b) seats.b = socket.id
+    const rawToken = socket.handshake.auth ? socket.handshake.auth.token : undefined
+    const token = typeof rawToken === "string" && rawToken ? rawToken.slice(0, 128) : randomUUID()
+
+    // Same token as a sitting player (a refresh) keeps that seat; otherwise take
+    // whichever seat nobody has claimed.
+    const seat = seatByToken(token) ?? freeSeat()
+    if (seat) claimSeat(seat, socket.id, token)
 
     socket.emit("role", seatOf(socket.id))
     broadcastState()
@@ -100,7 +129,16 @@ io.on("connection", (socket) => {
 
     socket.on("disconnect", () => {
         const seat = seatOf(socket.id)
-        if (seat) seats[seat] = null
+        if (!seat) return
+
+        // Hold the seat for the reclaim window, then let it go.
+        const entry = seats[seat]
+        entry.socketId = null
+        entry.timer = setTimeout(() => {
+            seats[seat] = null
+            broadcastState()
+        }, SEAT_GRACE_MS)
+
         broadcastState()
     })
 })
