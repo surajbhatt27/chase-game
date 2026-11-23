@@ -64,6 +64,18 @@ function statusText() {
     return "Game in progress"
 }
 
+// Where the side to move may legally go, keyed by origin square. Sent with every
+// state so the browser can show move hints without holding any rules logic.
+function legalMovesBySquare() {
+    const moves = {}
+    for (const { from, to } of chess.moves({ verbose: true })) {
+        const destinations = (moves[from] ??= [])
+        // The four promotion choices share one destination square.
+        if (!destinations.includes(to)) destinations.push(to)
+    }
+    return moves
+}
+
 // Everything the browser needs to draw the game. The client holds no rules logic.
 function gameState() {
     return {
@@ -71,6 +83,7 @@ function gameState() {
             row.map((piece) => (piece ? { type: piece.type, color: piece.color } : null))
         ),
         turn: chess.turn(),
+        moves: legalMovesBySquare(),
         history: chess.history({ verbose: true }).map(({ san, color, from, to }) => ({ san, color, from, to })),
         status: statusText(),
         gameOver: chess.isGameOver(),
