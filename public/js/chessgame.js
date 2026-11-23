@@ -30,7 +30,7 @@ const GLYPHS = {
 };
 const COLOR_NAMES = { w: "White", b: "Black" };
 
-// state is whatever the server last sent: board, turn, history, status, seats.
+// state is whatever the server last sent: board, turn, moves, history, status, seats.
 let state = null;
 let playerRole = null;
 let manualFlip = false;
@@ -67,6 +67,9 @@ const renderBoard = () => {
         }
     }
 
+    // The selected piece's destinations, straight from the server's state.
+    const legalTargets = new Set((selectedSquare && state.moves[selectedSquare]) || []);
+
     const lastMove = state.history.length ? state.history[state.history.length - 1] : null;
     boardElement.innerHTML = "";
 
@@ -81,6 +84,11 @@ const renderBoard = () => {
             }
 
             if (name === selectedSquare) squareEl.classList.add("selected");
+
+            if (legalTargets.has(name)) {
+                squareEl.classList.add("legal");
+                if (piece) squareEl.classList.add("legal-capture");
+            }
 
             const canMove = piece && playerRole === piece.color && playerRole === state.turn && !state.gameOver;
 
@@ -134,7 +142,10 @@ const renderMeta = () => {
     turnDotEl.style.background = state.gameOver ? "transparent" : state.turn === "w" ? "white" : "black";
 
     myRoleEl.textContent = playerRole ? COLOR_NAMES[playerRole] : "Spectator";
-    seatLineEl.textContent = `White: ${state.seats.w} · Black: ${state.seats.b}`;
+    // One pill per seat, coloured by whether anyone is sitting there.
+    seatLineEl.innerHTML = ["w", "b"]
+        .map((color) => `<span class="seat ${state.seats[color]}">${COLOR_NAMES[color]}: ${state.seats[color]}</span>`)
+        .join("");
     resetBtn.disabled = !playerRole;
 };
 
@@ -144,7 +155,8 @@ const renderHistory = () => {
         const white = state.history[i] ? state.history[i].san : "";
         const black = state.history[i + 1] ? state.history[i + 1].san : "";
         const row = document.createElement("div");
-        row.innerHTML = `<strong>${i / 2 + 1}.</strong>&nbsp; ${white} &nbsp; ${black}`;
+        // Three columns so the pair lines up down the list.
+        row.innerHTML = `<span class="move-no">${i / 2 + 1}.</span><span>${white}</span><span>${black}</span>`;
         moveListEl.appendChild(row);
     }
     moveListEl.scrollTop = moveListEl.scrollHeight;
